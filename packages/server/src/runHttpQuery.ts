@@ -267,13 +267,34 @@ export async function runHttpQuery<TContext extends BaseContext>({
     };
   }
 
+  const acceptHeader = httpRequest.headers.get('accept');
+  if (acceptHeader && new Negotiator({
+    headers: { accept: httpRequest.headers.get('accept') },
+  }).mediaType([
+    MEDIA_TYPES.MULTIPART_MIXED_SUBSCRIPTION,
+  ]) === MEDIA_TYPES.MULTIPART_MIXED_SUBSCRIPTION) {
+    graphQLResponse.http.headers.set(
+      'content-type',
+      'multipart/mixed; boundary="-"; subscriptionSpec="1.0"',
+    );
+    return {
+      ...graphQLResponse.http,
+      body: {
+        kind: 'chunked',
+        asyncIterator: writeMultipartBody(
+          graphQLResponse.body.initialResult,
+          graphQLResponse.body.subsequentResults,
+        ),
+      },
+    };
+  }
+
   // Note that incremental delivery is not yet part of the official GraphQL
   // spec. We are implementing a proposed version of the spec, and require
   // clients to explicitly state `deferSpec=20220824`. Once incremental delivery
   // has been added to the GraphQL spec, we will support `accept` headers
   // without `deferSpec` as well (perhaps with slightly different behavior if
   // anything has changed).
-  const acceptHeader = httpRequest.headers.get('accept');
   if (
     !(
       acceptHeader &&
